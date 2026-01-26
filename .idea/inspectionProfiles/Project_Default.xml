@@ -1,0 +1,28 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="matplotlib" />
+          <option value="scipy" />
+          <option value="numpy" />
+          <option value="tensorflow-macos" />
+          <option value="tensorflow-metal" />
+          <option value="torch" />
+          <option value="torchvision" />
+          <option value="cleverhans" />
+          <option value="tqdm" />
+          <option value="tensorflow" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyPep8NamingInspection" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <option name="ignoredErrors">
+        <list>
+          <option value="N812" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
