@@ -6,7 +6,6 @@ DATA_PATH = "../preprocessing/data/atp_matches_preprocessed.csv"
 
 
 def rank_expected(rank_w, rank_l) -> float:
-    """Expected win probability based on ATP rank using logistic function."""
     if pd.isna(rank_w) or pd.isna(rank_l):
         return 0.5
     # Log ratio of ranks (lower rank = better, so l/w)
@@ -15,7 +14,6 @@ def rank_expected(rank_w, rank_l) -> float:
 
 
 def brier_score(y_true, y_prob):
-    """Brier score: lower is better."""
     return np.mean((y_prob - y_true) ** 2)
 
 

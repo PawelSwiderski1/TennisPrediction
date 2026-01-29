@@ -29,17 +29,8 @@ def build_tournament_history_features(
     round_col: str = "round",
 ) -> pd.DataFrame:
     """
-    Add tournament history features for winners and losers.
-
-    Features added:
-        - winner_best_result_tournament_history: best result winner achieved in this tournament before
-        - loser_best_result_tournament_history: best result loser achieved in this tournament before
-        - winner_last_result_tournament_history: winner's result from last time in this tournament
-        - loser_last_result_tournament_history: loser's result from last time in this tournament
-        - winner_average_result_tournament_history: winner's average result in this tournament
-        - loser_average_result_tournament_history: loser's average result in this tournament
-
-    Results are numeric: 1=R128, 2=R64, 3=R32, 4=R16, 5=QF, 6=SF, 7=F, 8=Champion
+    Add tournament history features (best/last/avg result in this tournament).
+    Results: 1=R128, 2=R64, 3=R32, 4=R16, 5=QF, 6=SF, 7=F, 8=Champion
     """
     out = df.sort_values(date_col, kind="mergesort").reset_index(drop=True)
     n = len(out)

@@ -148,6 +148,160 @@ def process_fold(df, cols, scalers, player_vocab, fit=False):
     }
 
 
+def prepare_single_row(
+    row,
+    p1_info_cols,
+    p2_info_cols,
+    env_cols,
+    scalers,
+    player_vocab,
+    device,
+):
+    """
+    Prepare a single row for model inference using pre-fitted scalers.
+
+    Args:
+        row: A single row from the DataFrame (pd.Series or dict-like)
+        p1_info_cols: List of player 1 info column names
+        p2_info_cols: List of player 2 info column names
+        env_cols: List of environment column names
+        scalers: Dict containing fitted scalers with keys:
+            - 'elo_scaler': StandardScaler for elo columns
+            - 'info_residual_scaler': MinMaxScaler for other info columns
+            - 'env_scaler': MinMaxScaler for environment columns
+            - 'form_params': Dict with 'surplus_c' and 'days_cap'
+        player_vocab: Dict mapping player_id -> index
+        device: torch device
+
+    Returns:
+        Tuple of tensors: (p1_info, p1_form, p2_info, p2_form, env)
+    """
+    elo_scaler = scalers["elo_scaler"]
+    residual_scaler = scalers["info_residual_scaler"]
+    env_scaler = scalers["env_scaler"]
+    form_params = scalers["form_params"]
+    days_cap = form_params["days_cap"]
+
+    # Player indices
+    p1_id = int(row["player1_id"])
+    p2_id = int(row["player2_id"])
+    p1_idx = player_vocab.get(p1_id, 0)
+    p2_idx = player_vocab.get(p2_id, 0)
+
+    # Transform info features for a single row
+    def transform_info_single(row_data, cols, elo_sc, residual_sc):
+        X = pd.DataFrame([{c: float(row_data[c]) if pd.notna(row_data[c]) else 0.0 for c in cols}])
+        X = X.astype(np.float32)
+
+        residual_cols, elo_cols = [], []
+        for c in cols:
+            if is_passthrough(c):
+                continue
+            if is_elo_col(c):
+                elo_cols.append(c)
+            else:
+                residual_cols.append(c)
+
+        if residual_cols:
+            vals = safe(X[residual_cols].values)
+            X[residual_cols] = residual_sc.transform(vals)
+
+        if elo_cols:
+            vals = safe(X[elo_cols].values)
+            X[elo_cols] = elo_sc.transform(vals)
+
+        return X.values.astype(np.float32).flatten()
+
+    p1_info = transform_info_single(row, p1_info_cols, elo_scaler, residual_scaler)
+    p2_info = transform_info_single(row, p2_info_cols, elo_scaler, residual_scaler)
+
+    # Environment features
+    env = np.array([[float(row[c]) if pd.notna(row[c]) else 0.0 for c in env_cols]], dtype=np.float32)
+    env = env_scaler.transform(env).flatten()
+
+    # Form features - use same stacking as extract_form: stack columns then transpose
+    p1_form_cols = [f"player1_{s}" for s in FORM_SUFFIXES]
+    p2_form_cols = [f"player2_{s}" for s in FORM_SUFFIXES]
+
+    # Stack arrays along axis 0 (one array per feature), then transpose to (T, D)
+    p1_form_arrays = [to_array(row[c]) for c in p1_form_cols]  # D arrays of shape (T,)
+    p1_form = np.stack(p1_form_arrays, axis=0).T.astype(np.float32)  # (T, D)
+
+    p2_form_arrays = [to_array(row[c]) for c in p2_form_cols]
+    p2_form = np.stack(p2_form_arrays, axis=0).T.astype(np.float32)  # (T, D)
+
+    # Apply form scaling using fitted elo_scaler stats (same as process_form)
+    if hasattr(elo_scaler, 'mean_') and len(elo_scaler.mean_) > 1:
+        mu = elo_scaler.mean_[1]  # standard elo dimension
+        sd = max(np.sqrt(elo_scaler.var_[1]), 1e-6)
+        p1_form[:, IDX_OPP_ELO] = (safe(p1_form[:, IDX_OPP_ELO]) - mu) / sd
+        p2_form[:, IDX_OPP_ELO] = (safe(p2_form[:, IDX_OPP_ELO]) - mu) / sd
+
+    # surplus and days scaling (use constants, same as process_form)
+    p1_form[:, IDX_SURPLUS] = np.clip(p1_form[:, IDX_SURPLUS] / SURPLUS_SCALE, -1, 1)
+    p2_form[:, IDX_SURPLUS] = np.clip(p2_form[:, IDX_SURPLUS] / SURPLUS_SCALE, -1, 1)
+
+    p1_days = np.maximum(p1_form[:, IDX_DAYS], 0.0)
+    p2_days = np.maximum(p2_form[:, IDX_DAYS], 0.0)
+    p1_form[:, IDX_DAYS] = np.clip(np.log1p(p1_days) / days_cap, 0, 1)
+    p2_form[:, IDX_DAYS] = np.clip(np.log1p(p2_days) / days_cap, 0, 1)
+
+    # Convert to tensors with batch dimension
+    p1_info_t = torch.tensor(p1_info, dtype=torch.float32, device=device).unsqueeze(0)
+    p2_info_t = torch.tensor(p2_info, dtype=torch.float32, device=device).unsqueeze(0)
+    p1_form_t = torch.tensor(p1_form, dtype=torch.float32, device=device).unsqueeze(0)
+    p2_form_t = torch.tensor(p2_form, dtype=torch.float32, device=device).unsqueeze(0)
+    env_t = torch.tensor(env, dtype=torch.float32, device=device).unsqueeze(0)
+
+    return p1_info_t, p1_form_t, p2_info_t, p2_form_t, env_t
+
+
+def compare_single_vs_batch(row_idx, test_df, p1_info_cols, p2_info_cols, env_cols, scalers, player_vocab, device):
+    """
+    Debug function to compare prepare_single_row output vs batch processing.
+    Returns dict with differences for each tensor.
+    """
+    # Get single row result
+    row = test_df.iloc[row_idx]
+    single_p1_info, single_p1_form, single_p2_info, single_p2_form, single_env = prepare_single_row(
+        row, p1_info_cols, p2_info_cols, env_cols, scalers, player_vocab, device
+    )
+
+    # Get batch result for comparison
+    cols = {"p1_info": p1_info_cols, "p2_info": p2_info_cols, "env": env_cols}
+    batch_scalers = {
+        "elo": scalers["elo_scaler"],
+        "residual": scalers["info_residual_scaler"],
+        "env": scalers["env_scaler"],
+        "days_cap": scalers["form_params"]["days_cap"],
+    }
+
+    # Process just this one row as a dataframe
+    single_row_df = test_df.iloc[[row_idx]]
+    batch_data = process_fold(single_row_df, cols, batch_scalers, player_vocab, fit=False)
+
+    batch_p1_info = torch.tensor(batch_data["p1_info"], dtype=torch.float32, device=device)
+    batch_p2_info = torch.tensor(batch_data["p2_info"], dtype=torch.float32, device=device)
+    batch_p1_form = torch.tensor(batch_data["p1_form"], dtype=torch.float32, device=device)
+    batch_p2_form = torch.tensor(batch_data["p2_form"], dtype=torch.float32, device=device)
+    batch_env = torch.tensor(batch_data["env"], dtype=torch.float32, device=device)
+
+    results = {
+        "p1_info_match": torch.allclose(single_p1_info.squeeze(), batch_p1_info.squeeze(), atol=1e-5),
+        "p2_info_match": torch.allclose(single_p2_info.squeeze(), batch_p2_info.squeeze(), atol=1e-5),
+        "p1_form_match": torch.allclose(single_p1_form.squeeze(), batch_p1_form.squeeze(), atol=1e-5),
+        "p2_form_match": torch.allclose(single_p2_form.squeeze(), batch_p2_form.squeeze(), atol=1e-5),
+        "env_match": torch.allclose(single_env.squeeze(), batch_env.squeeze(), atol=1e-5),
+        "p1_info_diff": (single_p1_info.squeeze() - batch_p1_info.squeeze()).abs().max().item(),
+        "p2_info_diff": (single_p2_info.squeeze() - batch_p2_info.squeeze()).abs().max().item(),
+        "p1_form_diff": (single_p1_form.squeeze() - batch_p1_form.squeeze()).abs().max().item(),
+        "p2_form_diff": (single_p2_form.squeeze() - batch_p2_form.squeeze()).abs().max().item(),
+        "env_diff": (single_env.squeeze() - batch_env.squeeze()).abs().max().item(),
+    }
+
+    return results
+
+
 def prepare_dataloaders(
     train_df, val_df,
     p1_info_cols, p2_info_cols,

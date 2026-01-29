@@ -37,7 +37,6 @@ SURFACE_MATCH_THRESHOLD = 10
 
 
 def initial_elo_from_rank(rank) -> float:
-    """Get initial Elo rating based on ATP rank."""
     if rank is None or pd.isna(rank):
         return ELO_BASE
     for max_rank, elo in RANK_TO_INITIAL_ELO:
@@ -76,7 +75,6 @@ def calc_absence_penalty(rating, last_match, current_date):
 
 def _update_elo(ratings, matches, w, l, match_date, is_walkover,
                 lookback_days, k_multiplier=1.0):
-    """Update ratings for a single match, return pre-match values."""
     rw, rl = ratings[w], ratings[l]
     pwin = elo_expected(rw, rl)
 

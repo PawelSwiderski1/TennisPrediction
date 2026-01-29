@@ -24,7 +24,6 @@ from form_score import build_form_score_features
 
 
 def run_feature_creation(input_path: Path, output_path: Path) -> pd.DataFrame:
-    """Load data, apply all feature creation functions, and save results."""
     print(f"Loading data from {input_path}...")
     df = pd.read_csv(input_path, parse_dates=["Date"])
     print(f"Loaded {len(df)} matches")

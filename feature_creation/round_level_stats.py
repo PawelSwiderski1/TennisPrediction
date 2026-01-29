@@ -13,7 +13,6 @@ DEFAULT_LEVEL = 0
 
 
 def get_level_value(level: str) -> int:
-    """Convert tournament level to numeric value."""
     return LEVEL_HIERARCHY.get(str(level).lower(), DEFAULT_LEVEL)
 
 
@@ -27,15 +26,8 @@ def build_round_level_features(
     level_col: str = "tournament_level",
 ) -> pd.DataFrame:
     """
-    Add round-level performance features for winners and losers.
-
-    Features added:
-        - winner_round_level_appearances: appearances in this round at this level or higher
-        - loser_round_level_appearances: appearances in this round at this level or higher
-        - winner_round_level_win_pct: win % in this round at this level or higher
-        - loser_round_level_win_pct: win % in this round at this level or higher
-
-    Optimized by maintaining running counts per player/round/level combination.
+    Add round-level performance features (appearances and win %) at this round
+    and tournament level or higher.
     """
     out = df.sort_values(date_col, kind="mergesort").reset_index(drop=True)
     n = len(out)
@@ -58,7 +50,6 @@ def build_round_level_features(
     all_levels = list(LEVEL_HIERARCHY.keys())
 
     def get_stats_at_or_above(player, round_name, min_level_val):
-        """Get total appearances and wins at round for levels >= min_level_val."""
         cache_key = (player, round_name, min_level_val)
         if cache_key in cache:
             return cache[cache_key]
@@ -75,7 +66,6 @@ def build_round_level_features(
         return total_apps, total_wins
 
     def invalidate_cache(player, round_name):
-        """Invalidate cache entries for player/round when stats update."""
         for min_lvl in LEVEL_HIERARCHY.values():
             cache_key = (player, round_name, min_lvl)
             if cache_key in cache:

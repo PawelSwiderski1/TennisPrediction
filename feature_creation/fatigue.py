@@ -6,12 +6,7 @@ DECAY_FACTOR = 0.85
 
 
 def calc_fatigue_score(player_history: list, current_date) -> float:
-    """
-    Calculate fatigue score based on recent match history.
-
-    Score is sum of: 0.85^((current_date - match_date).days - 1) * minutes
-    for all previous matches.
-    """
+    """Sum of decay^(days-1) * minutes for all previous matches."""
     total = 0.0
     for match_date, minutes in player_history:
         days_diff = (current_date - match_date).days
@@ -28,13 +23,7 @@ def build_fatigue_features(
     date_col: str = "Date",
     minutes_col: str = "minutes",
 ) -> pd.DataFrame:
-    """
-    Add fatigue score features for winners and losers.
-
-    Features added:
-        - winner_fatigue_score: accumulated fatigue for winner before match
-        - loser_fatigue_score: accumulated fatigue for loser before match
-    """
+    """Add fatigue score features for winners and losers."""
     out = df.sort_values(date_col, kind="mergesort").reset_index(drop=True)
     n = len(out)
 

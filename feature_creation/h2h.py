@@ -11,15 +11,7 @@ def build_h2h_features(
     date_col: str = "Date",
     surface_col: str = "surface",
 ) -> pd.DataFrame:
-    """
-    Add head-to-head features for winners and losers.
-
-    Features added:
-        - winner_h2h_wins: number of times winner has beaten loser before this match
-        - loser_h2h_wins: number of times loser has beaten winner before this match
-        - winner_h2h_surface_wins: same but only on current surface
-        - loser_h2h_surface_wins: same but only on current surface
-    """
+    """Add head-to-head win counts (overall and surface-specific)."""
     out = df.sort_values(date_col, kind="mergesort").reset_index(drop=True)
     n = len(out)
 

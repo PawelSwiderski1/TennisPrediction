@@ -50,19 +50,6 @@ def build_form_score_features(
 ) -> pd.DataFrame:
     """
     Add form score features tracking last N matches for each player.
-
-    Features added (for both winner and loser):
-        - {role}_last_preds: list of predicted win probabilities (ELO-based)
-        - {role}_last_base_perfs: list of (outcome - prediction) values
-        - {role}_last_set_margin_norm: list of normalized set margins
-        - {role}_last_game_margin_norm: list of normalized game margins
-        - {role}_last_margin_surplus: list of (actual - expected) margin
-        - {role}_last_best_of_3: list of best-of-3 flags
-        - {role}_last_days_since: list of days since each past match
-        - {role}_last_opponent_elo: list of opponent ELO ratings
-        - {role}_last_same_surface: list of flags (1 if same surface as current)
-        - {role}_last_same_tournament: list of flags (1 if same tournament as current)
-
     Walkovers are excluded from form history.
     """
     out = df.sort_values(date_col, kind="mergesort").reset_index(drop=True)
